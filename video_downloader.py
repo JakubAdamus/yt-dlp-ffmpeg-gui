@@ -10,25 +10,14 @@ import queue
 from tkinter import filedialog, messagebox
 from tkinter import ttk
 from enum import Enum
-
-
-class YTDLPStatus:
-    _updated = False  
-
-    @staticmethod
-    def is_updated() -> bool:
-        return YTDLPStatus._updated
-
-    @staticmethod
-    def update(status: bool):
-        YTDLPStatus._updated = status
-        
+ 
 download_queue = queue.Queue()
 
 class Operation(Enum):
     VIDEO_DOWNLOAD = 1
     UPDATE_YTDP = 2
     GET_YTDLP_VERSION = 3
+
 
 def download_file(url: str, dest: str):
     top = tk.Toplevel(root)
@@ -63,6 +52,7 @@ def download_file(url: str, dest: str):
     
     check_queue_periodically()
 
+
 def check_queue_periodically():
     try:
         
@@ -75,9 +65,7 @@ def check_queue_periodically():
             top_window.destroy()
             
             file_name = os.path.basename(file_path)
-            if file_name == "yt-dlp.exe":
-                YTDLPStatus.update(True)
-            elif file_name == "ffmpeg.zip":
+            if file_name == "ffmpeg.zip":
                 def extract_ffmpeg():
                     try:
                         base_path = os.path.dirname(os.path.abspath(sys.executable))
@@ -112,20 +100,25 @@ def check_queue_periodically():
     except queue.Empty:
         root.after(100, check_queue_periodically)
 
-def show_message(result_queue: queue.Queue):
-    if result_queue.empty():
-        return
-    
-    status, title, message = result_queue.get()
-    if status:
-        messagebox.showinfo(title, message)
-    else:
-        messagebox.showerror(title, message)
+
+class MessageQueue(queue.Queue):
+    def put(self, status: bool, title: str, message: str, block=True, timeout=None):  
+        super().put((status, title, message), block=block, timeout=timeout)
+
+    def show_next(self):
+        if self.empty():
+            return
+        status, title, message = self.get()
+        if status:
+            messagebox.showinfo(title, message)
+        else:
+            messagebox.showerror(title, message)
 
 
 def get_path(executable: str) -> str:
     exe_dir = os.path.dirname(os.path.abspath(sys.executable))
     return os.path.join(exe_dir, executable)
+
 
 def check_dependencies():
     yt_dlp_path = get_path("yt-dlp.exe")
@@ -138,11 +131,11 @@ def check_dependencies():
         )
     else:
         command = [get_path("yt-dlp.exe"), "-U"]
-        result_queue = queue.Queue()
-        thread = threading.Thread(target=run_command, args=(command, Operation.UPDATE_YTDP, result_queue,), daemon=True)
+        messageQueue = MessageQueue()
+        thread = threading.Thread(target=run_command, args=(command, Operation.UPDATE_YTDP, messageQueue), daemon=True)
         thread.start()
         thread.join()
-        show_message(result_queue)
+        messageQueue.show_next()
             
     ffmpeg_path = get_path("ffmpeg.exe")
     if not os.path.exists(ffmpeg_path):
@@ -154,9 +147,9 @@ def check_dependencies():
             "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
             archive_path
         ) 
-        
-         
-def run_command(command, operation: Operation, result_queue: queue):
+
+           
+def run_command(command, operation: Operation, result_queue: queue.Queue):
     try:
         kwargs = {"check": True}
         
@@ -177,18 +170,17 @@ def run_command(command, operation: Operation, result_queue: queue):
         result = subprocess.run(command, **kwargs)
         
         if operation == Operation.VIDEO_DOWNLOAD:
-            result_queue.put([True,"Sukces", "Pobieranie zakończone sukcesem!"])
+            result_queue.put(True, "Sukces", "Pobieranie zakończone sukcesem!")
             
         elif operation == Operation.GET_YTDLP_VERSION:
             result_queue.put(result.stdout.strip())
             
         elif operation == Operation.UPDATE_YTDP:
-            YTDLPStatus.update(True)
             new_version = get_ytdlp_version()
             
             if(new_version != old_version):
-                result_queue.put([True, "Aktualizacja zakończona",
-                                f"yt-dlp został zaktualizowany.\nWersja: {new_version}"])
+                result_queue.put(True, "Aktualizacja zakończona",
+                                 f"yt-dlp został zaktualizowany.\nWersja: {new_version}")
         
     except subprocess.CalledProcessError:
         result_queue.put(False, "Błąd", "Wystąpił problem podczas pobierania.")
@@ -196,17 +188,12 @@ def run_command(command, operation: Operation, result_queue: queue):
 def get_ytdlp_version():
     result_queue = queue.Queue()
     command = [get_path("yt-dlp.exe"), "--version"]
-    thread = threading.Thread(target=run_command, args=(command, Operation.GET_YTDLP_VERSION, result_queue,), daemon=True)
+    thread = threading.Thread(target=run_command, args=(command, Operation.GET_YTDLP_VERSION, result_queue), daemon=True)
     thread.start()
     thread.join()
     
     return result_queue.get()
-
-def init():
-    if not YTDLPStatus.is_updated(): 
-        check_dependencies()
-        
-        
+   
 def download_video():
     platform = platform_cbx.get()
     url = url_entry.get()
@@ -263,12 +250,11 @@ def download_video():
             "--force-overwrite" 
         ]
     
-    result_queue = queue.Queue()
-    thread = threading.Thread(target=run_command, args=(command, Operation.VIDEO_DOWNLOAD, result_queue,), daemon=True)
+    messageQueue = MessageQueue()
+    thread = threading.Thread(target=run_command, args=(command, Operation.VIDEO_DOWNLOAD, messageQueue), daemon=True)
     thread.start()
     thread.join()
-    show_message(result_queue)
-    
+    messageQueue.show_next()
     
 
 def on_platform_change(event):
@@ -309,6 +295,7 @@ def on_platform_change(event):
         resolution_combobox.config(state="normal")
     
     root.update_idletasks()
+       
         
 root = tk.Tk()
 root.title("Video Downloader")
@@ -354,6 +341,6 @@ auth_switch.pack(pady=5)
 download_button = tk.Button(root, text="Pobierz", command=download_video, width=20)
 download_button.pack(side="bottom", pady=20)
 
-root.after(100, init)
+root.after(100, check_dependencies)
 
 root.mainloop()
