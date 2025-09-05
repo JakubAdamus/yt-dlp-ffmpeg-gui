@@ -37,6 +37,39 @@ class MessageQueue(queue.Queue):
             
         else:
             messagebox.showerror(title, message)
+            
+            
+def dark_title_bar(window):
+        
+        def supports_dark_title_bar() -> bool:
+            if platform.system() != "Windows":
+                return False
+            
+            version = platform.version().split(".")
+            
+            try:
+                build = int(version[-1])  
+                
+            except ValueError:
+                return False
+
+            return build >= 17763
+        
+        if not supports_dark_title_bar():
+            return 
+        
+        window.update_idletasks()
+
+        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
+        set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
+        get_parent = ct.windll.user32.GetParent
+        hwnd = get_parent(window.winfo_id())
+
+        value = ct.c_int(2)  
+        set_window_attribute(
+            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ct.byref(value),
+            ct.sizeof(value)
+        )
 
 
 class VideoDownloader(tk.Tk):
@@ -56,7 +89,7 @@ class VideoDownloader(tk.Tk):
         self.style = ttk.Style(self)
         self.style.theme_use("clam")
         
-        self.after(10, self.dark_title_bar)
+        self.after(10, lambda: dark_title_bar(self))
 
         self.style.configure("TLabel", background=self.dark_bg, foreground=self.text_fg)
 
@@ -188,40 +221,6 @@ class VideoDownloader(tk.Tk):
                 messagebox.showerror("Brak rozdzielczości", "Nie udało się pobrać informacji o filmie.")
                 self.resolution_combobox['values'] = []
       
-                    
-    def dark_title_bar(self):
-        
-        def supports_dark_title_bar() -> bool:
-            if platform.system() != "Windows":
-                return False
-            
-            version = platform.version().split(".")
-            
-            try:
-                build = int(version[-1])  
-                
-            except ValueError:
-                return False
-
-            return build >= 17763
-        
-        if not supports_dark_title_bar():
-            return 
-        
-        self.update_idletasks()
-
-        DWMWA_USE_IMMERSIVE_DARK_MODE = 20
-        set_window_attribute = ct.windll.dwmapi.DwmSetWindowAttribute
-        get_parent = ct.windll.user32.GetParent
-        hwnd = get_parent(self.winfo_id())
-
-        value = ct.c_int(2)  
-        set_window_attribute(
-            hwnd, DWMWA_USE_IMMERSIVE_DARK_MODE, ct.byref(value),
-            ct.sizeof(value)
-        )
-
-
     def get_path(self, executable: str) -> str:
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
         
@@ -330,6 +329,7 @@ class VideoDownloader(tk.Tk):
         top = tk.Toplevel(self)
         top.title("Pobieranie")
         top.configure(bg=self.dark_bg)
+        self.after(10, lambda: dark_title_bar(top))
         green = "#00aa00"  
 
         tk.Label(top, text=f"Pobieranie {os.path.basename(dest)}",fg=self.text_fg, bg=self.dark_bg).pack(pady=10)
@@ -368,56 +368,54 @@ class VideoDownloader(tk.Tk):
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         
-        self.check_queue_periodically()
-
-
-    def check_queue_periodically(self):
-        try:
-            result = self.download_queue.get(block=False) 
-            top_window = result.get("top_window")
-            
-            if result["success"]:
-                file_path = result['file_path']
-                messagebox.showinfo("Sukces", f"Pobrano plik: {file_path}")
-                top_window.destroy()
+        def check_queue_periodically():
+            try:
+                result = self.download_queue.get(block=False) 
+                top_window = result.get("top_window")
                 
-                file_name = os.path.basename(file_path)
-                
-                if file_name == "ffmpeg.zip":
-                    def extract_ffmpeg():
-                        try:
-                            base_path = os.path.dirname(os.path.abspath(sys.executable))
-                            
-                            with zipfile.ZipFile(file_path, 'r') as zip_ref:
-                                for member in zip_ref.namelist():
-                                    if member.replace("\\", "/").endswith("bin/ffmpeg.exe"):
-                                        zip_ref.extract(member, path=base_path)
-                                        src = os.path.join(base_path, member)
-                                        os.replace(src, self.get_path("ffmpeg.exe"))
-                                        break
-                                    
-                            os.remove(file_path)
-                            
-                            for item in os.listdir(base_path):
-                                folder_path = os.path.join(base_path, item)
-                                if os.path.isdir(folder_path) and item.startswith("ffmpeg"):
-                                    shutil.rmtree(folder_path)
-
-                            messagebox.showinfo("Gotowe", "ffmpeg.exe został pobrany")
+                if result["success"]:
+                    file_path = result['file_path']
+                    messagebox.showinfo("Sukces", f"Pobrano plik: {file_path}")
+                    top_window.destroy()
                     
-                        except Exception as e:
-                            messagebox.showerror("Błąd", f"Nie udało się wyciągnąć ffmpeg: {e}")
+                    file_name = os.path.basename(file_path)
+                    
+                    if file_name == "ffmpeg.zip":
+                        def extract_ffmpeg():
+                            try:
+                                base_path = os.path.dirname(os.path.abspath(sys.executable))
+                                
+                                with zipfile.ZipFile(file_path, 'r') as zip_ref:
+                                    for member in zip_ref.namelist():
+                                        if member.replace("\\", "/").endswith("bin/ffmpeg.exe"):
+                                            zip_ref.extract(member, path=base_path)
+                                            src = os.path.join(base_path, member)
+                                            os.replace(src, self.get_path("ffmpeg.exe"))
+                                            break
+                                        
+                                os.remove(file_path)
+                                
+                                for item in os.listdir(base_path):
+                                    folder_path = os.path.join(base_path, item)
+                                    if os.path.isdir(folder_path) and item.startswith("ffmpeg"):
+                                        shutil.rmtree(folder_path)
 
-                    thread = threading.Thread(target=extract_ffmpeg, daemon=True)
-                    thread.start()
-                
-            else:
-                messagebox.showerror("Błąd", f"Nie udało się pobrać pliku: {result['error_message']}")
-                top_window.destroy()
-                
-        except queue.Empty:
-            self.after(100, self.check_queue_periodically)
+                                messagebox.showinfo("Gotowe", "ffmpeg.exe został pobrany")
+                        
+                            except Exception as e:
+                                messagebox.showerror("Błąd", f"Nie udało się wyciągnąć ffmpeg: {e}")
 
+                        thread = threading.Thread(target=extract_ffmpeg, daemon=True)
+                        thread.start()
+                    
+                else:
+                    messagebox.showerror("Błąd", f"Nie udało się pobrać pliku: {result['error_message']}")
+                    top_window.destroy()
+                    
+            except queue.Empty:
+                self.after(100, check_queue_periodically)
+        
+        check_queue_periodically()
 
     def download_video(self):
         platform = self.platform_cbx.get()
