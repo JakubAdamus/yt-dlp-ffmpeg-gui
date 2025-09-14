@@ -28,12 +28,13 @@ class MessageQueue(queue.Queue):
 
     def show_next(self):
         if self.empty():
-            return
+            raise queue.Empty
         
         status, title, message = self.get()
         
         if status:
-            messagebox.showinfo(title, message)
+            if title and message:   
+                messagebox.showinfo(title, message)
             
         else:
             messagebox.showerror(title, message)
@@ -71,6 +72,9 @@ def dark_title_bar(window):
             ct.sizeof(value)
         )
 
+def validate_regex(value, pattern):
+    value = value.strip()
+    return re.fullmatch(pattern, value) is not None
 
 class VideoDownloader(tk.Tk):
     def __init__(self):
@@ -79,10 +83,16 @@ class VideoDownloader(tk.Tk):
         self.dark_bg = "#2b2b2b"   
         self.widget_bg = "#3c3c3c" 
         self.active_bg = "#505050" 
-        self.text_fg = "#ffffff"   
+        self.text_fg = "#ffffff"
+        self.disabled_bg = "#2a2a2a"
+        self.disabled_fg = "#7a7a7a"
+        
+        self.default_font = ("Segoe UI", 11) 
+        self.option_add("*Font", self.default_font)
         
         self.title("Video Downloader")
-        self.geometry("400x475")
+        self.geometry("435x535")
+        self.resizable(False, False)
         
         self.configure(bg=self.dark_bg)
 
@@ -97,13 +107,21 @@ class VideoDownloader(tk.Tk):
             "TButton",
             background=self.widget_bg,
             foreground=self.text_fg,
-            relief="flat"
+            bordercolor=self.text_fg,
+            font=self.default_font,
+            relief="flat",  
         )
         
         self.style.map(
             "TButton",
-            background=[("active", self.active_bg)],
-            foreground=[("active", self.text_fg)]
+            background=[
+                ("active", self.active_bg),
+                ("disabled", self.disabled_bg)   
+            ],
+            foreground=[
+                ("active", self.text_fg),
+                ("disabled", self.disabled_fg)  
+            ],
         )
 
         self.style.configure(
@@ -125,101 +143,122 @@ class VideoDownloader(tk.Tk):
             "bg": self.widget_bg, "fg": self.text_fg,
             "insertbackground": self.text_fg,  
             "highlightthickness": 0,
-            "relief": "flat"
+            "relief": "flat",
+            "disabledbackground": self.disabled_bg,  
+            "disabledforeground": self.disabled_fg,  
         }
 
-        tk.Label(self, text="Wybierz platformę:", fg="white", bg=self.dark_bg).pack(pady=5)
+        ttk.Label(self, text="Select platform:").pack(pady=5)
         plaftorm_list = ["YT", "Vimeo"]
         self.platform_cbx = ttk.Combobox(self, values=plaftorm_list, state="readonly", width=10)
         self.platform_cbx.set("YT")
         self.platform_cbx.pack(pady=5)
         self.platform_cbx.bind("<<ComboboxSelected>>", self.on_platform_change)
 
-        tk.Label(self, text="Podaj URL filmu:", fg="white", bg=self.dark_bg).pack(pady=5)
+        ttk.Label(self, text="Enter the URL of the video:").pack(pady=5)
         self.url_entry = tk.Entry(self, width=50, **entry_opts)
         self.url_entry.pack(pady=5)
         
         self.url_entry.bind("<FocusOut>", self.update_resolutions)
         self.url_entry.bind("<Return>", self.update_resolutions)
         
-        self.resolution_label = tk.Label(self, text="Wybierz rozdzielczość:", fg="white", bg=self.dark_bg)
+        self.resolution_label = ttk.Label(self, text="Select resolution:")
         self.resolution_label.pack(pady=5)
         self.resolution_combobox = ttk.Combobox(self, state="readonly", width=10)
         self.resolution_combobox.pack(pady=5)
+        self.resolution_combobox.bind("<<ComboboxSelected>>", self.on_resolution_change)
 
-        self.start_label = tk.Label(self, text="Początek (hh:mm:ss):", fg="white", bg=self.dark_bg)
+        self.start_label = ttk.Label(self, text="Start time (hh:mm:ss):")
         self.start_label.pack(pady=5)
         self.start_time_entry = tk.Entry(self, width=20, **entry_opts)
         self.start_time_entry.pack(pady=5)
 
-        self.end_label = tk.Label(self, text="Koniec (hh:mm:ss):", fg="white", bg=self.dark_bg)
+        self.end_label = ttk.Label(self, text="End time (hh:mm:ss):")
         self.end_label.pack(pady=5)
         self.end_time_entry = tk.Entry(self, width=20, **entry_opts)
         self.end_time_entry.pack(pady=5)
 
-        self.crf_label = tk.Label(self, text="Wybierz wartość CRF:", fg="white", bg=self.dark_bg)
+        self.crf_label = ttk.Label(self, text="Select CRF value:")
         self.crf_label.pack(pady=5)
         self.crf_combobox = ttk.Combobox(self, values=[i for i in range(18, 29)], state="readonly", width=10)
         self.crf_combobox.set("23")
         self.crf_combobox.pack(pady=5)
+        self.crf_combobox.bind("<<ComboboxSelected>>", self.on_crf_change)
 
         self.auth_switch_value = tk.BooleanVar(value=False)
         self.auth_switch = tk.Checkbutton(
-            self, text="Autoryzuj YT", variable=self.auth_switch_value,
-            onvalue=True, offvalue=False,
+            self, text="Authorize YT", variable=self.auth_switch_value,
+            onvalue=True, offvalue=False, 
             bg=self.dark_bg, fg=self.text_fg, selectcolor=self.dark_bg,
             activebackground=self.dark_bg, activeforeground=self.text_fg
         )
         self.auth_switch.pack(pady=5)
 
-        self.download_button = ttk.Button(self, text="Pobierz", command=self.download_video, width=20)
+        self.download_button = ttk.Button(
+            self, 
+            text="Download Video", 
+            command=self.download_video, 
+            width=20,
+            state="disabled"
+        )
         self.download_button.pack(side="bottom", pady=20)
 
         self.after(100, self.check_dependencies)
+        
+    def validate_url(self, url):
+        if not url:
+            return False
+        
+        url_regex = r"^https?://[^\s/$.?#].[^\s]*$"
+        return validate_regex(url, url_regex)
 
     def update_resolutions(self, event):
-        url_regex = r"^https?://[^\s/$.?#].[^\s]*$"
         url = self.url_entry.get()
         platform = self.platform_cbx.get()
-        match = re.match(url_regex, url)
+       
+        if not self.validate_url(url):
+            self.download_button.config(state="disabled")
+            return
+        else:
+            self.download_button.config(state="normal")
         
-        if platform == "YT" and url and match:
-            def get_video_resolutions(url) -> list[int]:
-                result_queue = queue.Queue()
-                
-                command = [self.get_path("yt-dlp.exe"), "-j", url]
-                
-                thread = threading.Thread(
-                    target=self.run_command, 
-                    args=(command, Operation.GET_VIDEO_INFO, result_queue), 
-                    daemon=True
-                )
-                thread.start()
-                thread.join()
-
-                info: dict = result_queue.get()
-                
-                resolutions = set()
-                if 'formats' in info:
-                    for f in info['formats']:
-                        height = f.get('height')
-                        if height is not None and height >= 144:
-                            resolutions.add(f['height'])
+        if platform == "YT":
+            result_queue = queue.Queue()
+            
+            command = [self.get_path("yt-dlp.exe"), "-j", url]
+            
+            self.download_button.config(state="disabled")
+            thread = threading.Thread(
+                target=self.run_command, 
+                args=(command, Operation.GET_VIDEO_INFO, result_queue), 
+                daemon=True
+            )
+            thread.start()
+            
+            def check_queue_periodically():
+                try:
+                    info: dict = result_queue.get_nowait()
+                    resolutions = set()
+                    if 'formats' in info:
+                        for f in info['formats']:
+                            height = f.get('height')
+                            if height is not None and height >= 144:
+                                resolutions.add(f['height'])
+                     
+                    if resolutions:
+                        res_list = [str(r) for r in sorted(resolutions)]
+                        self.resolution_combobox['values'] = res_list
                     
-                    return sorted(list(resolutions))
-                
-                return []
-            
-            resolutions = get_video_resolutions(url)
-        
-            if resolutions:
-                res_list = [str(r) for r in resolutions]
-                self.resolution_combobox['values'] = res_list
-            
-                self.resolution_combobox.set(res_list[-1])
-            else:
-                messagebox.showerror("Brak rozdzielczości", "Nie udało się pobrać informacji o filmie.")
-                self.resolution_combobox['values'] = []
+                        self.resolution_combobox.set(res_list[-1])
+                        self.download_button.config(state="normal")
+                    else:
+                        messagebox.showerror("No resolution available", "Failed to retrieve video information.")
+                        self.resolution_combobox['values'] = []
+                        
+                except queue.Empty:
+                    self.after(100, check_queue_periodically)
+                    
+            check_queue_periodically()    
       
     def get_path(self, executable: str) -> str:
         exe_dir = os.path.dirname(os.path.abspath(sys.executable))
@@ -252,7 +291,7 @@ class VideoDownloader(tk.Tk):
             result = subprocess.run(command, **kwargs)
 
             if operation == Operation.VIDEO_DOWNLOAD:
-                result_queue.put(True, "Sukces", "Pobieranie zakończone sukcesem!")
+                result_queue.put(True, "Success", "Download successful!")
                 
             elif operation == Operation.GET_YTDLP_VERSION:
                 result_queue.put(result.stdout.strip())
@@ -266,12 +305,14 @@ class VideoDownloader(tk.Tk):
                 if new_version != old_version:
                     result_queue.put(
                         True, 
-                        "Aktualizacja zakończona", 
-                        f"yt-dlp został zaktualizowany.\nWersja: {new_version}"
+                        "Update completed", 
+                        f"yt-dlp has been updated.\nVersion: {new_version}"
                     )
+                else:
+                    result_queue.put(True, "", "")
                     
         except subprocess.CalledProcessError:
-            result_queue.put(False, "Błąd", "Wystąpił problem podczas pobierania.")
+            result_queue.put(False, "Error", "Download failed.")
 
 
     def get_ytdlp_version(self):
@@ -292,7 +333,7 @@ class VideoDownloader(tk.Tk):
         yt_dlp_path = self.get_path("yt-dlp.exe")
         
         if not os.path.exists(yt_dlp_path):
-            messagebox.showinfo("Instalacja", "Pobieram yt-dlp.exe...")
+            messagebox.showinfo("Installation", "Downloading yt-dlp.exe...")
             self.download_file(
                 "https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp.exe", 
                 yt_dlp_path
@@ -301,6 +342,7 @@ class VideoDownloader(tk.Tk):
         else:
             command = [yt_dlp_path, "-U"]
             messageQueue = MessageQueue()
+            self.url_entry.config(state="disabled")
             
             thread = threading.Thread(
                 target=self.run_command, 
@@ -308,9 +350,15 @@ class VideoDownloader(tk.Tk):
                 daemon=True
             )
             thread.start()
-            thread.join()
             
-            messageQueue.show_next()
+            def check_queue_periodically():
+                try:
+                    messageQueue.show_next()
+                    self.url_entry.config(state="normal")
+                except queue.Empty:
+                    self.after(100, check_queue_periodically)
+            
+            check_queue_periodically()
 
         ffmpeg_path = self.get_path("ffmpeg.exe")
         
@@ -318,7 +366,7 @@ class VideoDownloader(tk.Tk):
             base_path = os.path.dirname(os.path.abspath(sys.executable))
             archive_path = os.path.join(base_path, "ffmpeg.zip")
             
-            messagebox.showinfo("Instalacja", "Pobieram ffmpeg.exe...")
+            messagebox.showinfo("Installation", "Downloading ffmpeg.exe...")
             self.download_file(
                 "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip", 
                 archive_path
@@ -327,12 +375,12 @@ class VideoDownloader(tk.Tk):
 
     def download_file(self, url: str, dest: str):
         top = tk.Toplevel(self)
-        top.title("Pobieranie")
+        top.title("Downloading")
         top.configure(bg=self.dark_bg)
         self.after(10, lambda: dark_title_bar(top))
         green = "#00aa00"  
 
-        tk.Label(top, text=f"Pobieranie {os.path.basename(dest)}",fg=self.text_fg, bg=self.dark_bg).pack(pady=10)
+        tk.Label(top, text=f"Downloading {os.path.basename(dest)}",fg=self.text_fg, bg=self.dark_bg).pack(pady=10)
         
         self.style.configure("Dark.Horizontal.TProgressbar",
                 troughcolor=self.widget_bg,  
@@ -365,17 +413,18 @@ class VideoDownloader(tk.Tk):
             except Exception as e:
                 self.download_queue.put({"success": False, "error_message": str(e), "top_window": top})
 
+        self.url_entry.config(state="disabled")
         thread = threading.Thread(target=worker, daemon=True)
         thread.start()
         
         def check_queue_periodically():
             try:
-                result = self.download_queue.get(block=False) 
+                result = self.download_queue.get_nowait()
                 top_window = result.get("top_window")
                 
                 if result["success"]:
                     file_path = result['file_path']
-                    messagebox.showinfo("Sukces", f"Pobrano plik: {file_path}")
+                    messagebox.showinfo("Success", f"File downloaded: {file_path}")
                     top_window.destroy()
                     
                     file_name = os.path.basename(file_path)
@@ -400,16 +449,17 @@ class VideoDownloader(tk.Tk):
                                     if os.path.isdir(folder_path) and item.startswith("ffmpeg"):
                                         shutil.rmtree(folder_path)
 
-                                messagebox.showinfo("Gotowe", "ffmpeg.exe został pobrany")
+                                messagebox.showinfo("Done", "ffmpeg.exe has been extracted.")
+                                self.url_entry.config(state="normal")
                         
                             except Exception as e:
-                                messagebox.showerror("Błąd", f"Nie udało się wyciągnąć ffmpeg: {e}")
+                                messagebox.showerror("Error", f"Failed to extract ffmpeg: {e}")
 
                         thread = threading.Thread(target=extract_ffmpeg, daemon=True)
                         thread.start()
                     
                 else:
-                    messagebox.showerror("Błąd", f"Nie udało się pobrać pliku: {result['error_message']}")
+                    messagebox.showerror("Error", f"Failed to download file: {result['error_message']}")
                     top_window.destroy()
                     
             except queue.Empty:
@@ -424,21 +474,21 @@ class VideoDownloader(tk.Tk):
         end_time = self.end_time_entry.get()
         authorize = self.auth_switch_value.get()
         resolution = self.resolution_combobox.get()
-        output_dir = filedialog.askdirectory(title="Wybierz folder zapisu")
+        output_dir = filedialog.askdirectory(title="Select output folder")
 
         if not url or not output_dir:
-            messagebox.showerror("Błąd", "Podaj URL i wybierz folder docelowy!")
+            messagebox.showerror("Error", "Please provide the video URL and select a destination folder!")
             return
 
         yt_dlp_path = self.get_path("yt-dlp.exe")
         ffmpeg_path = self.get_path("ffmpeg.exe")
 
         if not os.path.exists(yt_dlp_path):
-            messagebox.showerror("Błąd", "Nie znaleziono pliku 'yt-dlp.exe' w folderze aplikacji!")
+            messagebox.showerror("Error", "File 'yt-dlp.exe' not found in the application folder!")
             return
         
         if not os.path.exists(ffmpeg_path):
-            messagebox.showerror("Błąd", "Nie znaleziono pliku 'ffmpeg.exe' w folderze aplikacji!")
+            messagebox.showerror("Error", "File 'ffmpeg.exe' not found in the application folder!")
             return
 
         output_template = os.path.join(output_dir, "%(title)s.%(ext)s")
@@ -473,7 +523,7 @@ class VideoDownloader(tk.Tk):
             match = re.match(r"^https://vimeo\.com/(\d+)", url)
             
             if not match:
-                messagebox.showerror("Błąd", "Nieprawidłowy adres URL Vimeo")
+                messagebox.showerror("Error", "Invalid Vimeo URL")
                 return
 
             video_id = match.group(1)
@@ -487,6 +537,7 @@ class VideoDownloader(tk.Tk):
             ]
 
         messageQueue = MessageQueue()
+        self.download_button.config(state="disabled")
         
         thread = threading.Thread(
             target=self.run_command, 
@@ -494,11 +545,18 @@ class VideoDownloader(tk.Tk):
             daemon=True
         )
         thread.start()
-        thread.join()
         
-        messageQueue.show_next()
+        def check_queue_periodically():
+            try:
+                messageQueue.show_next()
+                self.download_button.config(state="normal")
+            except queue.Empty:
+                self.after(100, check_queue_periodically)
+        
+        check_queue_periodically()
 
     def on_platform_change(self, event):
+        event.widget.selection_clear()
         selected_platform = self.platform_cbx.get()
         
         if selected_platform == "Vimeo":
@@ -517,19 +575,25 @@ class VideoDownloader(tk.Tk):
             self.resolution_combobox.set("")
             
         elif selected_platform == "YT":
-            self.resolution_label.pack(pady=5)
-            self.resolution_combobox.pack(pady=5)
-            self.start_label.pack(pady=5)
-            self.start_time_entry.pack(pady=5)
-            self.end_label.pack(pady=5)
-            self.end_time_entry.pack(pady=5)
-            self.crf_label.pack(pady=5)
-            self.crf_combobox.pack(pady=5)
-            self.auth_switch.pack(pady=5)
+            self.resolution_label.pack(pady=5, before=self.download_button)
+            self.resolution_combobox.pack(pady=5, before=self.download_button)
+            self.start_label.pack(pady=5, before=self.download_button)
+            self.start_time_entry.pack(pady=5, before=self.download_button)
+            self.end_label.pack(pady=5, before=self.download_button)
+            self.end_time_entry.pack(pady=5, before=self.download_button)
+            self.crf_label.pack(pady=5, before=self.download_button)
+            self.crf_combobox.pack(pady=5, before=self.download_button)
+            self.auth_switch.pack(pady=5, before=self.download_button)
             
         self.update_idletasks()
-
-
+        
+    def on_resolution_change(self, event):
+        event.widget.selection_clear()
+           
+    def on_crf_change(self, event):
+        event.widget.selection_clear()
+    
+        
 if __name__ == "__main__":
     app = VideoDownloader()
     app.mainloop()
