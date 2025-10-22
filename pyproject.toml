@@ -1,0 +1,48 @@
+[project]
+name = "yt_dlp_ffmpeg_gui"
+version = "0.1.0"
+description = "yt-dlp-ffmpeg-gui application"
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+
+dependencies = [
+    "altgraph==0.17.4",
+    "certifi==2025.8.3",
+    "charset-normalizer==3.4.3",
+    "idna==3.10",
+    "packaging==25.0",
+    "pefile==2023.2.7",
+    "pyinstaller==6.16.0",
+    "pyinstaller-hooks-contrib==2025.8",
+    "pywin32-ctypes==0.2.3",
+    "requests==2.32.5",
+    "urllib3==2.5.0",
+]
+
+[dependency-groups]
+dev = [
+    "mypy==1.12.1",
+    "black==25.9.0",
+    "pylint==4.0.0",
+    "types-requests (>=2.32.4.20250913,<3.0.0.0)",
+]
+
+[tool.poetry]
+package-mode = false
+
+[tool.mypy]
+    strict = true
+
+[tool.pylint]
+    disable= ["missing-module-docstring",
+        "missing-class-docstring",
+        "missing-function-docstring",
+        "unsubscriptable-object"
+    ]
+    
+[tool.pylint.SIMILIARITIES]
+    min-similarity-lines = 40
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

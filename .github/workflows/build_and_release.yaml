@@ -1,15 +1,17 @@
-name: Build and Release EXE
+name: CD - Build and Release EXE
 
 on:
   push:
     tags:
-      - 'v*' 
+      - "v*"
 
 jobs:
   build-and-release:
     runs-on: windows-latest
+    needs: [check-ci]
+
     permissions:
-      contents: write 
+      contents: write
       packages: write
 
     steps:
@@ -19,15 +21,18 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.11'
-      
+          python-version: "3.12"
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install -r requirements.txt
+          pip install poetry
+          poetry config virtualenvs.in-project true
+          poetry install --no-root --no-interaction
 
       - name: Build EXE
-        run: python -m PyInstaller --onefile --windowed video_downloader.py
+        run: |
+          poetry run pyinstaller --onefile --windowed src/video_downloader.py
 
       - name: Create Release and Upload Asset
         uses: softprops/action-gh-release@v1
@@ -36,3 +41,14 @@ jobs:
           files: dist/video_downloader.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  check-ci:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for CI workflow to succeed
+        uses: lewagon/wait-on-check-action@v1.3.3
+        with:
+          ref: ${{ github.ref }}
+          check-name: "check"
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          wait-interval: 30
