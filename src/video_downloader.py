@@ -10,7 +10,7 @@ import queue
 import platform
 import ctypes as ct
 from enum import StrEnum
-from typing import Any, Dict, NamedTuple, Protocol, cast
+from typing import Any, NamedTuple, Protocol, cast
 from dataclasses import dataclass
 
 import tkinter as tk
@@ -43,7 +43,7 @@ class DownloadResult(NamedTuple):
 
 class ResultQueue[T]:
     def __init__(self) -> None:
-        self._queue: queue.Queue[T] = queue.Queue()
+        self._queue = queue.Queue[T]()
 
     def put(self, value: T) -> None:
         self._queue.put(value)
@@ -71,7 +71,7 @@ class UpdateYtDlpCommand(Command[str]):
     yt_dlp_path: str
 
     def run(self) -> str:
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
 
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
@@ -109,7 +109,7 @@ class GetVideoInfoCommand(Command[dict[str, Any]]):
 
     def run(self) -> dict[str, Any]:
         cmd: list[str] = [self.yt_dlp_path, "-j", self.url]
-        kwargs: Dict[str, Any] = {"capture_output": True, "text": True}
+        kwargs: dict[str, Any] = {"capture_output": True, "text": True}
 
         if sys.platform == "win32":
             startupinfo = subprocess.STARTUPINFO()
@@ -196,6 +196,7 @@ class VideoDownloader(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.download_queue: queue.Queue[DownloadResult] = queue.Queue()
+        self.cached_url: str | None = None
         self.dark_bg = "#2b2b2b"
         self.widget_bg = "#3c3c3c"
         self.active_bg = "#505050"
@@ -264,7 +265,7 @@ class VideoDownloader(tk.Tk):
         self.platform_cbx = ttk.Combobox(
             self, values=plaftorm_list, state="readonly", width=10
         )
-        self.platform_cbx.set("YT")
+        self.platform_cbx.set(SupportedPlatform.YT)
         self.platform_cbx.pack(pady=5)
         self.platform_cbx.bind("<<ComboboxSelected>>", self.on_platform_change)
 
@@ -330,6 +331,12 @@ class VideoDownloader(tk.Tk):
         self, event: Event[tk.Entry]
     ) -> None:
         url = self.url_entry.get()
+
+        if self.cached_url is not None and url == self.cached_url:
+            return
+
+        self.cached_url = url
+
         selected_platform = self.platform_cbx.get()
 
         if not validate_url(url):
@@ -395,7 +402,7 @@ class VideoDownloader(tk.Tk):
             selected_platform = self.platform_cbx.get()
             authorize = self.auth_switch_value.get()
 
-            if selected_platform == "YT" and not authorize:
+            if selected_platform == SupportedPlatform.YT and not authorize:
                 msg += "\nTry again with 'Authorize YT' checked."
 
             self.after(0, lambda: messagebox.showerror("Error", msg))
