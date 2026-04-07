@@ -9,13 +9,13 @@ import threading
 import queue
 import platform
 import ctypes as ct
-from enum import StrEnum
+from enum import StrEnum, auto
 from typing import Any, NamedTuple, Protocol, cast
 from dataclasses import dataclass
 
 import tkinter as tk
 from tkinter import ttk
-from tkinter import Event, filedialog, messagebox
+from tkinter import filedialog, messagebox
 import requests
 
 
@@ -25,8 +25,8 @@ REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
 
 
 class SupportedPlatform(StrEnum):
-    YT = "YT"
-    VIMEO = "Vimeo"
+    YT = auto()
+    VIMEO = auto()
 
 
 class ExecutableName(StrEnum):
@@ -55,6 +55,14 @@ class ResultQueue[T]:
 # pylint: disable=too-few-public-methods
 class Command[T](Protocol):
     def run(self) -> T: ...
+
+
+class EntryEvent(Protocol):
+    widget: tk.Entry
+
+
+class ComboboxEvent(Protocol):
+    widget: ttk.Combobox
 
 
 @dataclass
@@ -265,7 +273,7 @@ class VideoDownloader(tk.Tk):
         self.platform_cbx = ttk.Combobox(
             self, values=plaftorm_list, state="readonly", width=10
         )
-        self.platform_cbx.set(SupportedPlatform.YT)
+        self.platform_cbx.set(SupportedPlatform.YT.value)
         self.platform_cbx.pack(pady=5)
         self.platform_cbx.bind("<<ComboboxSelected>>", self.on_platform_change)
 
@@ -328,7 +336,7 @@ class VideoDownloader(tk.Tk):
         self.after(100, self.check_dependencies)
 
     def update_resolutions(  # pylint: disable=unused-argument
-        self, event: Event[tk.Entry]
+        self, event: EntryEvent
     ) -> None:
         url = self.url_entry.get()
 
@@ -337,13 +345,13 @@ class VideoDownloader(tk.Tk):
 
         self.cached_url = url
 
-        selected_platform = self.platform_cbx.get()
+        selected_platform = SupportedPlatform(self.platform_cbx.get())
 
         if not validate_url(url):
             self.download_button.config(state="disabled")
             return
 
-        if selected_platform != SupportedPlatform.YT:
+        if selected_platform is not SupportedPlatform.YT:
             self.download_button.config(state="normal")
             return
 
@@ -399,10 +407,10 @@ class VideoDownloader(tk.Tk):
             result = command.run()
         except subprocess.CalledProcessError:
             msg = "Download failed."
-            selected_platform = self.platform_cbx.get()
+            selected_platform = SupportedPlatform(self.platform_cbx.get())
             authorize = self.auth_switch_value.get()
 
-            if selected_platform == SupportedPlatform.YT and not authorize:
+            if selected_platform is SupportedPlatform.YT and not authorize:
                 msg += "\nTry again with 'Authorize YT' checked."
 
             self.after(0, lambda: messagebox.showerror("Error", msg))
@@ -723,7 +731,7 @@ class VideoDownloader(tk.Tk):
         check_queue_periodically()
 
     def download_video(self) -> None:
-        selected_platform = self.platform_cbx.get()
+        selected_platform = SupportedPlatform(self.platform_cbx.get())
         url = self.url_entry.get()
         output_dir = filedialog.askdirectory(title="Select output folder")
 
@@ -742,14 +750,14 @@ class VideoDownloader(tk.Tk):
         output_template = os.path.join(output_dir, "%(title)s.%(ext)s")
 
         try:
-            if selected_platform == SupportedPlatform.YT:
+            if selected_platform is SupportedPlatform.YT:
                 cmd = self._build_youtube_command(
                     yt_dlp_path=yt_dlp_path,
                     ffmpeg_path=ffmpeg_path,
                     output_template=output_template,
                     url=url,
                 )
-            elif selected_platform == SupportedPlatform.VIMEO:
+            elif selected_platform is SupportedPlatform.VIMEO:
                 cmd = self._build_vimeo_command(
                     yt_dlp_path=yt_dlp_path, url=url, output_template=output_template
                 )
@@ -764,11 +772,11 @@ class VideoDownloader(tk.Tk):
 
         self._run_download_command(cmd)
 
-    def on_platform_change(self, event: Event[ttk.Combobox]) -> None:
+    def on_platform_change(self, event: ComboboxEvent) -> None:
         event.widget.selection_clear()
-        selected_platform = self.platform_cbx.get()
+        selected_platform = SupportedPlatform(self.platform_cbx.get())
 
-        if selected_platform == SupportedPlatform.VIMEO:
+        if selected_platform is SupportedPlatform.VIMEO:
             self.resolution_label.pack_forget()
             self.resolution_combobox.pack_forget()
             self.start_label.pack_forget()
@@ -783,7 +791,7 @@ class VideoDownloader(tk.Tk):
             self.resolution_combobox["values"] = []
             self.resolution_combobox.set("")
 
-        elif selected_platform == SupportedPlatform.YT:
+        elif selected_platform is SupportedPlatform.YT:
             self.resolution_label.pack(pady=5, before=self.download_button)
             self.resolution_combobox.pack(pady=5, before=self.download_button)
             self.start_label.pack(pady=5, before=self.download_button)
@@ -797,10 +805,10 @@ class VideoDownloader(tk.Tk):
         self.download_button.config(state="disabled")
         self.update_idletasks()
 
-    def on_resolution_change(self, event: Event[ttk.Combobox]) -> None:
+    def on_resolution_change(self, event: ComboboxEvent) -> None:
         event.widget.selection_clear()
 
-    def on_crf_change(self, event: Event[ttk.Combobox]) -> None:
+    def on_crf_change(self, event: ComboboxEvent) -> None:
         event.widget.selection_clear()
 
 
