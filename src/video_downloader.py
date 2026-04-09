@@ -32,6 +32,7 @@ class SupportedPlatform(StrEnum):
 class ExecutableName(StrEnum):
     YT_DLP = "yt-dlp.exe"
     FFMPEG = "ffmpeg.exe"
+    FFPROBE = "ffprobe.exe"
 
 
 class DownloadResult(NamedTuple):
@@ -466,7 +467,8 @@ class VideoDownloader(tk.Tk):
 
             messagebox.showinfo("Installation", "Downloading ffmpeg.exe...")
             self.download_file(
-                "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip",
+                "https://github.com/"
+                "yt-dlp/FFmpeg-Builds/releases/download/latest/ffmpeg-master-latest-win64-gpl.zip",
                 archive_path,
             )
 
@@ -543,17 +545,23 @@ class VideoDownloader(tk.Tk):
         thread.start()
 
         def extract_ffmpeg(file_path: str) -> None:
-            """Extract ffmpeg.exe safely and clean up temporary files."""
+            """Extract ffmpeg.exe and ffprobe.exe safely and clean up temporary files."""
             try:
                 base_path = os.path.dirname(os.path.abspath(sys.executable))
 
+                targets = {
+                    ExecutableName.FFMPEG.value: get_path(ExecutableName.FFMPEG),
+                    ExecutableName.FFPROBE.value: get_path(ExecutableName.FFPROBE),
+                }
+
                 with zipfile.ZipFile(file_path, "r") as zip_ref:
                     for member in zip_ref.namelist():
-                        if member.replace("\\", "/").endswith("bin/ffmpeg.exe"):
+                        filename = os.path.basename(member)
+
+                        if filename in targets:
                             zip_ref.extract(member, path=base_path)
                             src = os.path.join(base_path, member)
-                            os.replace(src, get_path(ExecutableName.FFMPEG))
-                            break
+                            os.replace(src, targets[filename])
 
                 os.remove(file_path)
 
