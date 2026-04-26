@@ -22,24 +22,23 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install poetry
-          poetry config virtualenvs.in-project true
-          poetry install --no-root --no-interaction
+          pip install uv
+          uv sync --group dev
 
       - name: Run MyPy type checking
         shell: powershell
         run: |
           cd ${{ github.workspace }}
-          poetry run mypy src
+          uv run mypy src
 
       - name: Run Pylint analysis
         shell: powershell
         run: |
           cd ${{ github.workspace }}
-          poetry run pylint src
+          uv run pylint src
 
       - name: Run Black formatting check
         shell: powershell
         run: |
           cd ${{ github.workspace }}
-          poetry run black --check src
+          uv run black --check src

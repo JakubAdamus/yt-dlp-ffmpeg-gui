@@ -1,5 +1,6 @@
 .venv/
 .vscode/
+*.lock
 
 *.spec
 dist/
