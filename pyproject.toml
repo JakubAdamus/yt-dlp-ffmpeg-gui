@@ -17,7 +17,6 @@ dependencies = [
     "pywin32-ctypes==0.2.3",
     "requests==2.32.5",
     "urllib3==2.5.0",
-    "setuptools>=82.0.1,<83.0.0",
 ]
 
 [dependency-groups]
@@ -26,6 +25,7 @@ dev = [
     "black>=25.9.0,<26.0.0",
     "pylint>=4.0.0,<5.0.0",
     "types-requests (>=2.32.4.20250913,<3.0.0.0)",
+    "setuptools>=81.0.0,<82.0.0",
 ]
 
 [tool.black]

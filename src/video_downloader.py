@@ -35,6 +35,11 @@ class ExecutableName(StrEnum):
     FFPROBE = "ffprobe.exe"
 
 
+class Codec(StrEnum):
+    H265 = "libx265"
+    H264 = "libx264"
+
+
 class DownloadResult(NamedTuple):
     success: bool
     top_window: tk.Toplevel
@@ -217,7 +222,7 @@ class VideoDownloader(tk.Tk):
         self.option_add("*Font", self.default_font)
 
         self.title("Video Downloader")
-        self.geometry("435x535")
+        self.geometry("435x600")
         self.resizable(False, False)
 
         self.configure(bg=self.dark_bg)
@@ -301,12 +306,21 @@ class VideoDownloader(tk.Tk):
         self.end_time_entry = tk.Entry(self, width=20, **entry_opts)
         self.end_time_entry.pack(pady=5)
 
+        self.codec_label = ttk.Label(self, text="Select codec:")
+        self.codec_label.pack(pady=5)
+        self.codec_combobox = ttk.Combobox(
+            self, values=[c.name for c in Codec], state="readonly", width=10
+        )
+        self.codec_combobox.set(Codec.H265.name)
+        self.codec_combobox.pack(pady=5)
+        self.codec_combobox.bind("<<ComboboxSelected>>", self.on_codec_change)
+
         self.crf_label = ttk.Label(self, text="Select CRF value:")
         self.crf_label.pack(pady=5)
         self.crf_combobox = ttk.Combobox(
             self, values=[str(i) for i in range(18, 29)], state="readonly", width=10
         )
-        self.crf_combobox.set("23")
+        self.crf_combobox.set("20")
         self.crf_combobox.pack(pady=5)
         self.crf_combobox.bind("<<ComboboxSelected>>", self.on_crf_change)
 
@@ -663,6 +677,7 @@ class VideoDownloader(tk.Tk):
         end_time = self.end_time_entry.get()
         authorize = self.auth_switch_value.get()
         resolution = self.resolution_combobox.get()
+        codec = Codec[self.codec_combobox.get()]
         crf_value = self.crf_combobox.get()
         output_format = f"bestvideo[height={resolution}]+bestaudio/best"
 
@@ -678,7 +693,7 @@ class VideoDownloader(tk.Tk):
             output_template,
             url,
             "--postprocessor-args",
-            f"-c:v libx264 -crf {crf_value}",
+            f"-c:v {codec.value} -crf {crf_value}",
             "--force-overwrite",
         ]
 
@@ -793,6 +808,8 @@ class VideoDownloader(tk.Tk):
             self.end_time_entry.pack_forget()
             self.crf_label.pack_forget()
             self.crf_combobox.pack_forget()
+            self.codec_label.pack_forget()
+            self.codec_combobox.pack_forget()
             self.auth_switch.pack_forget()
 
             self.url_entry.delete(0, tk.END)
@@ -808,6 +825,8 @@ class VideoDownloader(tk.Tk):
             self.end_time_entry.pack(pady=5, before=self.download_button)
             self.crf_label.pack(pady=5, before=self.download_button)
             self.crf_combobox.pack(pady=5, before=self.download_button)
+            self.codec_label.pack(pady=5, before=self.download_button)
+            self.codec_combobox.pack(pady=5, before=self.download_button)
             self.auth_switch.pack(pady=5, before=self.download_button)
 
         self.download_button.config(state="disabled")
@@ -817,6 +836,9 @@ class VideoDownloader(tk.Tk):
         event.widget.selection_clear()
 
     def on_crf_change(self, event: ComboboxEvent) -> None:
+        event.widget.selection_clear()
+
+    def on_codec_change(self, event: ComboboxEvent) -> None:
         event.widget.selection_clear()
 
 
