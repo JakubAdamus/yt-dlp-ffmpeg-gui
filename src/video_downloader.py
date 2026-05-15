@@ -18,7 +18,6 @@ from tkinter import ttk
 from tkinter import filedialog, messagebox
 import requests
 
-
 CONNECT_TIMEOUT = 10  # in seconds
 READ_TIMEOUT = 300  # in seconds
 REQUEST_TIMEOUT = (CONNECT_TIMEOUT, READ_TIMEOUT)
@@ -425,7 +424,7 @@ class VideoDownloader(tk.Tk):
             selected_platform = SupportedPlatform(self.platform_cbx.get())
             authorize = self.auth_switch_value.get()
 
-            if selected_platform is SupportedPlatform.YT and not authorize:
+            if selected_platform == SupportedPlatform.YT and not authorize:
                 msg += "\nTry again with 'Authorize YT' checked."
 
             self.after(0, lambda: messagebox.showerror("Error", msg))
@@ -679,7 +678,10 @@ class VideoDownloader(tk.Tk):
         resolution = self.resolution_combobox.get()
         codec = Codec[self.codec_combobox.get()]
         crf_value = self.crf_combobox.get()
-        output_format = f"bestvideo[height={resolution}]+bestaudio/best"
+        output_format = (
+            f"bestvideo[height={resolution}][vcodec^=avc]+bestaudio"
+            f"/bestvideo[height={resolution}]+bestaudio/best"
+        )
 
         cmd = [
             yt_dlp_path,
@@ -691,10 +693,6 @@ class VideoDownloader(tk.Tk):
             ffmpeg_path,
             "-o",
             output_template,
-            url,
-            "--postprocessor-args",
-            f"-c:v {codec.value} -crf {crf_value}",
-            "--force-overwrite",
         ]
 
         sections = self._build_download_sections(start_time, end_time)
@@ -703,6 +701,15 @@ class VideoDownloader(tk.Tk):
 
         if authorize:
             cmd.extend(["--cookies-from-browser", "firefox"])
+
+        cmd.extend(
+            [
+                "--postprocessor-args",
+                f"ffmpeg:-c:v {codec.value} -crf {crf_value} -threads 0",
+                "--force-overwrites",
+                url,
+            ]
+        )
 
         return cmd
 
@@ -773,14 +780,14 @@ class VideoDownloader(tk.Tk):
         output_template = os.path.join(output_dir, "%(title)s.%(ext)s")
 
         try:
-            if selected_platform is SupportedPlatform.YT:
+            if selected_platform == SupportedPlatform.YT:
                 cmd = self._build_youtube_command(
                     yt_dlp_path=yt_dlp_path,
                     ffmpeg_path=ffmpeg_path,
                     output_template=output_template,
                     url=url,
                 )
-            elif selected_platform is SupportedPlatform.VIMEO:
+            elif selected_platform == SupportedPlatform.VIMEO:
                 cmd = self._build_vimeo_command(
                     yt_dlp_path=yt_dlp_path, url=url, output_template=output_template
                 )
@@ -799,7 +806,7 @@ class VideoDownloader(tk.Tk):
         event.widget.selection_clear()
         selected_platform = SupportedPlatform(self.platform_cbx.get())
 
-        if selected_platform is SupportedPlatform.VIMEO:
+        if selected_platform == SupportedPlatform.VIMEO:
             self.resolution_label.pack_forget()
             self.resolution_combobox.pack_forget()
             self.start_label.pack_forget()
@@ -816,7 +823,7 @@ class VideoDownloader(tk.Tk):
             self.resolution_combobox["values"] = []
             self.resolution_combobox.set("")
 
-        elif selected_platform is SupportedPlatform.YT:
+        elif selected_platform == SupportedPlatform.YT:
             self.resolution_label.pack(pady=5, before=self.download_button)
             self.resolution_combobox.pack(pady=5, before=self.download_button)
             self.start_label.pack(pady=5, before=self.download_button)
