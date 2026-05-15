@@ -705,7 +705,7 @@ class VideoDownloader(tk.Tk):
         cmd.extend(
             [
                 "--postprocessor-args",
-                f"ffmpeg:-c:v {codec.value} -crf {crf_value} -threads 0",
+                f"ffmpeg:-c:v {codec.value} -crf {crf_value} -c:a aac -threads 0",
                 "--force-overwrites",
                 url,
             ]
