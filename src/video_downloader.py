@@ -119,9 +119,14 @@ class UpdateYtDlpCommand(Command[str]):
 class GetVideoInfoCommand(Command[dict[str, Any]]):
     yt_dlp_path: str
     url: str
+    browser: str | None = None
 
     def run(self) -> dict[str, Any]:
         cmd: list[str] = [self.yt_dlp_path, "-j", self.url]
+
+        if self.browser:
+            cmd.extend(["--cookies-from-browser", self.browser])
+
         kwargs: dict[str, Any] = {"capture_output": True, "text": True}
 
         if sys.platform == "win32":
@@ -186,22 +191,44 @@ def get_path(executable: ExecutableName) -> str:
 
 
 def parse_time(time_str: str) -> int | None:
-    time_pattern = r"^(\d+)(?:[:.](\d{1,2}))?(?:[:.](\d{1,2}))?$"
-    match = re.match(time_pattern, time_str.strip())
+    time_pattern = re.compile(
+        r"""
+    ^
+    (?:
+        (?P<hours>\d+):(?P<minutes>\d{1,2}):(?P<seconds>\d{1,2}) |
+        (?P<minutes_only>\d+):(?P<seconds_only>\d{1,2}) |
+        (?P<seconds_only_raw>\d+)
+    )
+    $
+    """,
+        re.VERBOSE,
+    )
 
+    cleaned_time_string = time_str.strip()
+    if not cleaned_time_string:
+        return None
+
+    match = time_pattern.match(cleaned_time_string)
     if not match:
         return None
 
-    if match.group(2) is None and match.group(3) is None:
-        seconds = int(match.group(1))
-        return seconds
+    # HH:MM:SS
+    if match.group("hours") is not None:
+        hours = int(match.group("hours"))
+        minutes = int(match.group("minutes"))
+        seconds = int(match.group("seconds"))
 
-    hours = int(match.group(1))
-    minutes = int(match.group(2)) if match.group(2) else 0
-    seconds = int(match.group(3)) if match.group(3) else 0
-    total_seconds = hours * 3600 + minutes * 60 + seconds
+        return hours * 3600 + minutes * 60 + seconds
 
-    return total_seconds
+    # MM:SS
+    if match.group("minutes_only") is not None:
+        minutes = int(match.group("minutes_only"))
+        seconds = int(match.group("seconds_only"))
+
+        return minutes * 60 + seconds
+
+    # SS
+    return int(match.group("seconds_only_raw"))
 
 
 # pylint: disable=too-many-instance-attributes, too-many-statements
@@ -221,7 +248,7 @@ class VideoDownloader(tk.Tk):
         self.option_add("*Font", self.default_font)
 
         self.title("Video Downloader")
-        self.geometry("435x600")
+        self.geometry("435x515")
         self.resizable(False, False)
 
         self.configure(bg=self.dark_bg)
@@ -295,39 +322,81 @@ class VideoDownloader(tk.Tk):
         self.resolution_combobox.pack(pady=5)
         self.resolution_combobox.bind("<<ComboboxSelected>>", self.on_resolution_change)
 
-        self.start_label = ttk.Label(self, text="Start time (hh:mm:ss):")
-        self.start_label.pack(pady=5)
-        self.start_time_entry = tk.Entry(self, width=20, **entry_opts)
-        self.start_time_entry.pack(pady=5)
+        self.sections_frame = tk.Frame(self, bg=self.dark_bg)
+        self.sections_frame.pack(pady=5)
 
-        self.end_label = ttk.Label(self, text="End time (hh:mm:ss):")
-        self.end_label.pack(pady=5)
-        self.end_time_entry = tk.Entry(self, width=20, **entry_opts)
-        self.end_time_entry.pack(pady=5)
+        start_section_frame = tk.Frame(self.sections_frame, bg=self.dark_bg)
+        start_section_frame.pack(side="left", padx=10)
 
-        self.codec_label = ttk.Label(self, text="Select codec:")
-        self.codec_label.pack(pady=5)
+        self.start_label = ttk.Label(start_section_frame, text="Start time (hh:mm:ss):")
+        self.start_label.pack(anchor="w")
+        self.start_time_entry = tk.Entry(start_section_frame, width=20, **entry_opts)
+        self.start_time_entry.pack()
+
+        end_section_frame = tk.Frame(self.sections_frame, bg=self.dark_bg)
+        end_section_frame.pack(side="left", padx=10)
+
+        self.end_label = ttk.Label(end_section_frame, text="End time (hh:mm:ss):")
+        self.end_label.pack(anchor="w")
+        self.end_time_entry = tk.Entry(end_section_frame, width=20, **entry_opts)
+        self.end_time_entry.pack()
+
+        self.cbx_frame = tk.Frame(self, bg=self.dark_bg)
+        self.cbx_frame.pack(pady=5)
+
+        codec_frame = tk.Frame(self.cbx_frame, bg=self.dark_bg)
+        codec_frame.pack(side="left", padx=10)
+
+        self.codec_label = ttk.Label(codec_frame, text="Select codec:")
+        self.codec_label.pack(anchor="w")
+
         self.codec_combobox = ttk.Combobox(
-            self, values=[c.name for c in Codec], state="readonly", width=10
+            codec_frame, values=[c.name for c in Codec], state="readonly", width=10
         )
         self.codec_combobox.set(Codec.H265.name)
-        self.codec_combobox.pack(pady=5)
-        self.codec_combobox.bind("<<ComboboxSelected>>", self.on_codec_change)
+        self.codec_combobox.pack()
 
-        self.crf_label = ttk.Label(self, text="Select CRF value:")
-        self.crf_label.pack(pady=5)
+        crf_frame = tk.Frame(self.cbx_frame, bg=self.dark_bg)
+        crf_frame.pack(side="left", padx=10)
+
+        self.crf_label = ttk.Label(crf_frame, text="Select CRF value:")
+        self.crf_label.pack(anchor="w")
+
         self.crf_combobox = ttk.Combobox(
-            self, values=[str(i) for i in range(18, 29)], state="readonly", width=10
+            crf_frame,
+            values=[str(i) for i in range(18, 29)],
+            state="readonly",
+            width=10,
         )
         self.crf_combobox.set("20")
-        self.crf_combobox.pack(pady=5)
-        self.crf_combobox.bind("<<ComboboxSelected>>", self.on_crf_change)
+        self.crf_combobox.pack()
 
-        self.auth_switch_value = tk.BooleanVar(value=False)
-        self.auth_switch = tk.Checkbutton(
-            self,
-            text="Authorize YT",
-            variable=self.auth_switch_value,
+        self.auth_frame = tk.Frame(self, bg=self.dark_bg)
+        self.auth_frame.pack(pady=5)
+
+        auth_inner = tk.Frame(self.auth_frame, bg=self.dark_bg)
+        auth_inner.pack()
+
+        self.auth_label = ttk.Label(auth_inner, text="Browser authorization:")
+        self.auth_label.pack(anchor="w")
+
+        self.auth_combobox = ttk.Combobox(
+            auth_inner,
+            values=["None", "firefox", "chromium"],
+            state="readonly",
+            width=10,
+        )
+        self.auth_combobox.set("None")
+        self.auth_combobox.pack()
+
+        self.switch_frame = tk.Frame(self, bg=self.dark_bg)
+        self.switch_frame.pack(pady=5)
+
+        self.force_keyframes_value = tk.BooleanVar(value=True)
+        self.force_keyframes_switch = tk.Checkbutton(
+            self.switch_frame,
+            text="Force keyframes at cuts",
+            variable=self.force_keyframes_value,
             onvalue=True,
             offvalue=False,
             bg=self.dark_bg,
@@ -336,7 +405,7 @@ class VideoDownloader(tk.Tk):
             activebackground=self.dark_bg,
             activeforeground=self.text_fg,
         )
-        self.auth_switch.pack(pady=5)
+        self.force_keyframes_switch.pack(pady=5)
 
         self.download_button = ttk.Button(
             self,
@@ -357,8 +426,6 @@ class VideoDownloader(tk.Tk):
         if self.cached_url is not None and url == self.cached_url:
             return
 
-        self.cached_url = url
-
         selected_platform = SupportedPlatform(self.platform_cbx.get())
 
         if not validate_url(url):
@@ -375,7 +442,9 @@ class VideoDownloader(tk.Tk):
         if yt_dlp_path is None:
             return
 
-        command = GetVideoInfoCommand(yt_dlp_path=yt_dlp_path, url=url)
+        command = GetVideoInfoCommand(
+            yt_dlp_path=yt_dlp_path, url=url, browser=self._get_auth_browser()
+        )
         result_queue: ResultQueue[dict[str, Any]] = ResultQueue()
 
         thread = threading.Thread(
@@ -402,6 +471,7 @@ class VideoDownloader(tk.Tk):
             res_list = [str(r) for r in sorted(resolutions, key=int)]
             self.resolution_combobox["values"] = res_list
             self.resolution_combobox.set(res_list[-1])
+            self.cached_url = url
             self.download_button.config(state="normal")
 
         def check_queue() -> None:
@@ -422,10 +492,12 @@ class VideoDownloader(tk.Tk):
         except subprocess.CalledProcessError:
             msg = "Download failed."
             selected_platform = SupportedPlatform(self.platform_cbx.get())
-            authorize = self.auth_switch_value.get()
 
-            if selected_platform == SupportedPlatform.YT and not authorize:
-                msg += "\nTry again with 'Authorize YT' checked."
+            if (
+                selected_platform == SupportedPlatform.YT
+                and self._get_auth_browser() is None
+            ):
+                msg += "\nTry again with browser authorization enabled."
 
             self.after(0, lambda: messagebox.showerror("Error", msg))
         else:
@@ -632,6 +704,12 @@ class VideoDownloader(tk.Tk):
             return None
         return path
 
+    def _get_auth_browser(self) -> str | None:
+        value = self.auth_combobox.get()
+        if value == "None":
+            return None
+        return value.lower()
+
     def _build_download_sections(self, start_time: str, end_time: str) -> list[str]:
         if not start_time and not end_time:
             return []
@@ -660,7 +738,8 @@ class VideoDownloader(tk.Tk):
         elif end_time:
             sections.append(f"*-{end_time}")
 
-        sections.append("--force-keyframes-at-cuts")
+        if self.force_keyframes_value.get():
+            sections.append("--force-keyframes-at-cuts")
 
         return sections
 
@@ -674,7 +753,6 @@ class VideoDownloader(tk.Tk):
     ) -> list[str]:
         start_time = self.start_time_entry.get()
         end_time = self.end_time_entry.get()
-        authorize = self.auth_switch_value.get()
         resolution = self.resolution_combobox.get()
         codec = Codec[self.codec_combobox.get()]
         crf_value = self.crf_combobox.get()
@@ -699,8 +777,9 @@ class VideoDownloader(tk.Tk):
         if sections:
             cmd.extend(sections)
 
-        if authorize:
-            cmd.extend(["--cookies-from-browser", "firefox"])
+        browser = self._get_auth_browser()
+        if browser:
+            cmd.extend(["--cookies-from-browser", browser])
 
         cmd.extend(
             [
@@ -809,32 +888,25 @@ class VideoDownloader(tk.Tk):
         if selected_platform == SupportedPlatform.VIMEO:
             self.resolution_label.pack_forget()
             self.resolution_combobox.pack_forget()
-            self.start_label.pack_forget()
-            self.start_time_entry.pack_forget()
-            self.end_label.pack_forget()
-            self.end_time_entry.pack_forget()
-            self.crf_label.pack_forget()
-            self.crf_combobox.pack_forget()
-            self.codec_label.pack_forget()
-            self.codec_combobox.pack_forget()
-            self.auth_switch.pack_forget()
+            self.sections_frame.pack_forget()
+            self.cbx_frame.pack_forget()
+            self.auth_frame.pack_forget()
+            self.switch_frame.pack_forget()
 
             self.url_entry.delete(0, tk.END)
+            self.cached_url = None
             self.resolution_combobox["values"] = []
             self.resolution_combobox.set("")
 
         elif selected_platform == SupportedPlatform.YT:
+            self.url_entry.delete(0, tk.END)
+            self.cached_url = None
             self.resolution_label.pack(pady=5, before=self.download_button)
             self.resolution_combobox.pack(pady=5, before=self.download_button)
-            self.start_label.pack(pady=5, before=self.download_button)
-            self.start_time_entry.pack(pady=5, before=self.download_button)
-            self.end_label.pack(pady=5, before=self.download_button)
-            self.end_time_entry.pack(pady=5, before=self.download_button)
-            self.crf_label.pack(pady=5, before=self.download_button)
-            self.crf_combobox.pack(pady=5, before=self.download_button)
-            self.codec_label.pack(pady=5, before=self.download_button)
-            self.codec_combobox.pack(pady=5, before=self.download_button)
-            self.auth_switch.pack(pady=5, before=self.download_button)
+            self.sections_frame.pack(pady=5, before=self.download_button)
+            self.cbx_frame.pack(pady=5, before=self.download_button)
+            self.auth_frame.pack(pady=5, before=self.download_button)
+            self.switch_frame.pack(pady=5, before=self.download_button)
 
         self.download_button.config(state="disabled")
         self.update_idletasks()
